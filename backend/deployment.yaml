@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todo-api
+  namespace: todo-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: todo-api
+  template:
+    metadata:
+      labels:
+        app: todo-api
+    spec:
+      initContainers:
+        - name: npm-install
+          image: node:20-alpine
+          command: ["sh", "-c", "cp /code/server.js /app/ && cd /app && npm install mongodb"]
+          volumeMounts:
+            - name: code
+              mountPath: /code
+            - name: app
+              mountPath: /app
+      containers:
+        - name: todo-api
+          image: node:20-alpine
+          command: ["node", "/app/server.js"]
+          env:
+            - name: MONGO_URI
+              value: "mongodb://mongo:27017"
+            - name: PORT
+              value: "5000"
+          ports:
+            - containerPort: 5000
+          volumeMounts:
+            - name: app
+              mountPath: /app
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 5000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+      volumes:
+        - name: code
+          configMap:
+            name: todo-api-code
+        - name: app
+          emptyDir: {}

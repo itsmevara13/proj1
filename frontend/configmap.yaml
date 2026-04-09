@@ -1,0 +1,167 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: todo-frontend-config
+  namespace: todo-app
+data:
+  nginx.conf: |
+    server {
+        listen 8080;
+
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+            try_files $uri $uri/ /index.html;
+        }
+
+        location /api {
+            proxy_pass http://todo-api:5000;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+    }
+
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8"/>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+      <title>Todo App — K8s GitOps</title>
+      <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+               background: #f5f5f5; min-height: 100vh; padding: 40px 20px; }
+        .container { max-width: 580px; margin: 0 auto; }
+        h1 { font-size: 26px; font-weight: 600; color: #111; margin-bottom: 8px; }
+        .subtitle { font-size: 13px; color: #888; margin-bottom: 28px; }
+        .input-row { display: flex; gap: 8px; margin-bottom: 24px; }
+        .input-row input {
+          flex: 1; padding: 12px 16px; font-size: 15px; border: 1px solid #ddd;
+          border-radius: 10px; outline: none; background: #fff;
+          transition: border-color .15s;
+        }
+        .input-row input:focus { border-color: #1D9E75; }
+        .input-row button {
+          padding: 12px 22px; background: #1D9E75; color: #fff; border: none;
+          border-radius: 10px; font-size: 15px; cursor: pointer; font-weight: 500;
+          transition: background .15s;
+        }
+        .input-row button:hover { background: #0F6E56; }
+        .todo-item {
+          display: flex; align-items: center; gap: 12px;
+          background: #fff; border: 1px solid #eee; border-radius: 10px;
+          padding: 14px 16px; margin-bottom: 8px;
+          transition: opacity .2s;
+        }
+        .todo-item.done { opacity: 0.5; }
+        .todo-item input[type=checkbox] { width: 18px; height: 18px; cursor: pointer;
+          accent-color: #1D9E75; }
+        .todo-text { flex: 1; font-size: 15px; color: #222; }
+        .todo-item.done .todo-text { text-decoration: line-through; color: #aaa; }
+        .del-btn {
+          background: none; border: none; color: #ccc; font-size: 20px;
+          cursor: pointer; line-height: 1; padding: 0 4px;
+          transition: color .15s;
+        }
+        .del-btn:hover { color: #e55; }
+        .empty { text-align: center; color: #bbb; font-size: 15px;
+                 padding: 40px 0; }
+        .count { font-size: 12px; color: #aaa; margin-bottom: 12px; }
+        .badge {
+          display: inline-block; font-size: 11px; padding: 2px 8px;
+          background: #E1F5EE; color: #0F6E56; border-radius: 20px;
+          font-weight: 500; margin-left: 8px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>Todo App <span class="badge">K8s + ArgoCD</span></h1>
+        <p class="subtitle">Running on Minikube — no Docker build required</p>
+        <div class="input-row">
+          <input id="inp" type="text" placeholder="Add a new task..." />
+          <button onclick="addTodo()">Add</button>
+        </div>
+        <div id="count" class="count"></div>
+        <div id="list"></div>
+      </div>
+
+      <script>
+        const API = '/api/todos';
+        let todos = [];
+
+        async function load() {
+          try {
+            const r = await fetch(API);
+            todos = await r.json();
+            render();
+          } catch(e) {
+            document.getElementById('list').innerHTML =
+              '<p class="empty">Cannot reach API. Check pod logs.</p>';
+          }
+        }
+
+        function render() {
+          const list = document.getElementById('list');
+          const count = document.getElementById('count');
+          const pending = todos.filter(t => !t.done).length;
+          count.textContent = `${todos.length} task${todos.length !== 1 ? 's' : ''} — ${pending} remaining`;
+          if (todos.length === 0) {
+            list.innerHTML = '<p class="empty">No tasks yet. Add one above.</p>';
+            return;
+          }
+          list.innerHTML = todos.map(t => `
+            <div class="todo-item ${t.done ? 'done' : ''}" id="item-${t._id}">
+              <input type="checkbox" ${t.done ? 'checked' : ''}
+                onchange="toggleTodo('${t._id}', ${t.done})"/>
+              <span class="todo-text">${escHtml(t.text)}</span>
+              <button class="del-btn" onclick="deleteTodo('${t._id}')">&times;</button>
+            </div>`).join('');
+        }
+
+        function escHtml(s) {
+          return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                  .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        async function addTodo() {
+          const inp = document.getElementById('inp');
+          const text = inp.value.trim();
+          if (!text) return;
+          inp.value = '';
+          const r = await fetch(API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+          });
+          const todo = await r.json();
+          todos.unshift(todo);
+          render();
+        }
+
+        async function toggleTodo(id, done) {
+          const r = await fetch(`${API}/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ done: !done })
+          });
+          const updated = await r.json();
+          todos = todos.map(t => t._id == id ? updated : t);
+          render();
+        }
+
+        async function deleteTodo(id) {
+          await fetch(`${API}/${id}`, { method: 'DELETE' });
+          todos = todos.filter(t => t._id != id);
+          render();
+        }
+
+        document.getElementById('inp')
+          .addEventListener('keydown', e => e.key === 'Enter' && addTodo());
+
+        load();
+      </script>
+    </body>
+    </html>
