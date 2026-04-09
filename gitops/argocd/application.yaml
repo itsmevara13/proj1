@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/itsmevara13/gitops-proj1
+    repoURL: https://github.com/itsmevara13/proj1
     targetRevision: HEAD
     path: .                          # watch the whole repo root
   destination:
