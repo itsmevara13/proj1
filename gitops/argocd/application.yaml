@@ -7,7 +7,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/itsmevara13/proj1.git
-    targetRevision: main
+    targetRevision: HEAD
     path: .                          # watch the whole repo root
     directory:
       recurse: true
