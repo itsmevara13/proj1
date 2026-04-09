@@ -4,7 +4,7 @@ metadata:
   name: mongo
   namespace: proj1-gitops
 spec:
-   selector:
+  selector:
     app: mongo
   ports:
     - port: 27017
